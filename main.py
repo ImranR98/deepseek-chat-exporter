@@ -6,6 +6,19 @@ import getpass
 import os
 import time
 import argparse
+import subprocess
+import re
+
+def get_major_version(command):
+    try:
+        result = subprocess.run([command, '--version'], capture_output=True, text=True, check=True)
+        version_match = re.search(r'([0-9]+\.)+[0-9]+', result.stdout)
+        if version_match:
+            version_string = version_match.group(0)
+            major_version = version_string.split('.')[0]
+            return int(major_version)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
 
 def main():
     driver = None
@@ -42,7 +55,13 @@ def main():
             dataDir = f"/home/{getpass.getuser()}/.config/google-chrome"
         if os.path.isdir(dataDir):
             options.add_argument(f"--profile-directory=Default")
-        driver = uc.Chrome(options=options, user_data_dir=dataDir)
+        for cmd in ['chromium-browser', 'google-chrome']:
+            major_version = get_major_version(cmd)
+            if major_version:
+                break
+        else:
+            print("Neither chromium-browser nor google-chrome is available.")
+        driver = uc.Chrome(options=options, user_data_dir=dataDir, version_main=major_version)
 
         # Wait for manual login
         driver.get("https://chat.deepseek.com")
@@ -55,7 +74,7 @@ def main():
         has_more = True
         params = None
         while has_more:
-            response = driver.execute_script("""
+            script_to_run="""
                 const params = arguments[0];
                 let url = '/api/v0/chat_session/fetch_page';
                 if (params) {
@@ -65,12 +84,35 @@ def main():
                     method: 'GET',
                     credentials: 'include',
                     headers: {
-                        Authorization: 'Bearer ' + JSON.parse(localStorage.getItem('userToken')).value
+                        Authorization: 'Bearer ' + JSON.parse(localStorage.getItem('userToken')).value,
+                        accept: '*/*',
+                        "accept-language": 'en-US,en;q=0.9',
+                        priority: 'u=1, i',
+                        referer: 'https://chat.deepseek.com/',
+                        "sec-ch-ua": '"Not.A/Brand";v="99", "Chromium";v="136"',
+                        "sec-ch-ua-arch": '"x86"',
+                        "sec-ch-ua-bitness": '"64"',
+                        "sec-ch-ua-full-version": '"136.0.7103.113"',
+                        "sec-ch-ua-full-version-list": '"Not.A/Brand";v="99.0.0.0", "Chromium";v="136.0.7103.113"',
+                        "sec-ch-ua-mobile": '?0',
+                        "sec-ch-ua-model": '""',
+                        "sec-ch-ua-platform": '"Linux"',
+                        "sec-ch-ua-platform-version": '"6.14.6"',
+                        "sec-fetch-dest": 'empty',
+                        "sec-fetch-mode": 'cors',
+                        "sec-fetch-site": 'same-origin',
+                        "user-agent": 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+                        "x-app-version": '20241129.1',
+                        "x-client-locale": 'en_US',
+                        "x-client-platform": 'web',
+                        "x-client-version": '1.2.0-sse-hint'
                     }
                 })
                 .then(res => res.json())
                 .catch(err => ({ error: err.message }));
-            """, params)
+            """
+            print(script_to_run)
+            response = driver.execute_script(script_to_run, params)
 
             if 'error' in response:
                 raise Exception(f"API Error: {response['error']}")
@@ -87,7 +129,10 @@ def main():
             else:
                 params = None
         session_summary_entries_len = len(session_summary_entries)
-        print(f"Found {session_summary_entries_len} chat sessions. Fetching messages...")
+        print(f"Found {session_summary_entries_len} chat sessions.")
+        if (session_summary_entries_len == 0):
+            exit()
+        print(f"Fetching messages...")
 
         # Grab session data, reusing existing entries where timestamps are current
         session_data_entries = []
@@ -113,7 +158,28 @@ def main():
                     method: 'GET',
                     credentials: 'include',
                     headers: {
-                        Authorization: 'Bearer ' + JSON.parse(localStorage.getItem('userToken')).value
+                        Authorization: 'Bearer ' + JSON.parse(localStorage.getItem('userToken')).value,
+                        accept: '*/*',
+                        "accept-language": 'en-US,en;q=0.9',
+                        priority: 'u=1, i',
+                        referer: 'https://chat.deepseek.com/',
+                        "sec-ch-ua": '"Not.A/Brand";v="99", "Chromium";v="136"',
+                        "sec-ch-ua-arch": '"x86"',
+                        "sec-ch-ua-bitness": '"64"',
+                        "sec-ch-ua-full-version": '"136.0.7103.113"',
+                        "sec-ch-ua-full-version-list": '"Not.A/Brand";v="99.0.0.0", "Chromium";v="136.0.7103.113"',
+                        "sec-ch-ua-mobile": '?0',
+                        "sec-ch-ua-model": '""',
+                        "sec-ch-ua-platform": '"Linux"',
+                        "sec-ch-ua-platform-version": '"6.14.6"',
+                        "sec-fetch-dest": 'empty',
+                        "sec-fetch-mode": 'cors',
+                        "sec-fetch-site": 'same-origin',
+                        "user-agent": 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+                        "x-app-version": '20241129.1',
+                        "x-client-locale": 'en_US',
+                        "x-client-platform": 'web',
+                        "x-client-version": '1.2.0-sse-hint'
                     }
                 })
                 .then(res => res.json())
